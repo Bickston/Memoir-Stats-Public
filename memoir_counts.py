@@ -1,4 +1,5 @@
 from utils import get_posts, clean_text
+from collections import Counter
 
 
 def make_dictionary(dictionary_path):
@@ -31,33 +32,42 @@ def print_chars_and_words(dictionary, line_length, min_occurrences):
         print(line_dictionary[string])
 
 
-def count_characters(pdf_text, min_occurrences=2, alpha_only=False):
-    char_dic = {}
+def get_char_count_dic(pdf_text):
+    return Counter(clean_text(pdf_text))
 
-    pdf_text = pdf_text.lower()
 
-    for character in pdf_text:
-        if character not in char_dic and (not alpha_only or character.isalpha()):
-            char_dic[character] = 0
-        if character in char_dic:
-            char_dic[character] += 1
+def count_characters(pdf_text, min_occurrences=2, alpha_only=False, include_punc=False):
+    if include_punc:
+        char_dic = {}
+        pdf_text = pdf_text.lower()
+        for character in pdf_text:
+            if character not in char_dic and (not alpha_only or character.isalpha()):
+                char_dic[character] = 0
+            if character in char_dic:
+                char_dic[character] += 1
+    else:
+        char_dic = get_char_count_dic(pdf_text)
+        for key in list(char_dic.keys()):
+            if alpha_only and not key.isalpha():
+                del char_dic[key]
 
     print_chars_and_words(char_dic, 14, min_occurrences)
 
 
-def count_words(pdf_text, dic_path, min_occurrences=40, no_dic=True):
-    # TODO: change to a counter
-    cleaned_text = clean_text(pdf_text)
-    dictionary = make_dictionary(dic_path)
+def get_word_count_dic(pdf_text):
+    return Counter(clean_text(pdf_text).split())
 
-    word_count = {}
-    for word in cleaned_text.split():
-        if word not in word_count and (not no_dic or word not in dictionary):
-            word_count[word] = 0
-        if word in word_count:
-            word_count[word] += 1
 
-    print_chars_and_words(word_count, 18, min_occurrences)
+def count_words(pdf_text, dic_path, min_occurrences=40, in_dic=True):
+    counter = get_word_count_dic(pdf_text)
+
+    if not in_dic:
+        dictionary = make_dictionary(dic_path)
+        for key in list(counter.keys()):
+            if key in dictionary:
+                del counter[key]
+
+    print_chars_and_words(counter, 18, min_occurrences)
 
 
 def count_first_words(pdf_text, min_occurrences=1):
@@ -73,7 +83,7 @@ def count_first_words(pdf_text, min_occurrences=1):
     print_chars_and_words(word_count, 18, min_occurrences)
 
 
-def count_word_frequency(pdf_text, min_occurrences=120):
+def get_word_freq_dic(pdf_text):
     posts = get_posts(pdf_text)
     word_dictionary = {}
 
@@ -81,7 +91,7 @@ def count_word_frequency(pdf_text, min_occurrences=120):
         word_set = set()
 
         for word in post.split():
-            word = word.strip('''."'”“()[]?!,:;''')
+            word = clean_text(word)
             word_set.add(word)
 
         for word in word_set:
@@ -89,4 +99,39 @@ def count_word_frequency(pdf_text, min_occurrences=120):
                 word_dictionary[word] = 0
             word_dictionary[word] += 1
 
-    print_chars_and_words(word_dictionary, 22, min_occurrences)
+    return word_dictionary
+
+
+def count_word_frequency(pdf_text, min_occurrences=120):
+    print_chars_and_words(get_word_freq_dic(pdf_text), 22, min_occurrences)
+
+
+def count_phrases(pdf_text, words_in_phrase=2, min_occurrences=200):
+    text = clean_text(pdf_text).split()
+    phrase_dic = {}
+
+    for i in range(len(text) - words_in_phrase + 1):
+        phrase = ""
+        for j in range(i, i + words_in_phrase):
+            phrase += text[j] + " "
+        phrase = phrase.strip()
+
+        if phrase not in phrase_dic:
+            phrase_dic[phrase] = 0
+        phrase_dic[phrase] += 1
+
+    print_chars_and_words(phrase_dic, 10 * words_in_phrase, min_occurrences)
+
+
+def find_consistent_words(pdf_text, min_occurrences=100):
+    word_freq_dictionary = get_word_freq_dic(pdf_text)
+    word_count_dictionary = get_word_count_dic(pdf_text)
+
+    consistency_dic = {}
+
+    for key, value in word_freq_dictionary.items():
+        count = word_count_dictionary[key]
+        if len(key) != 0 and count >= min_occurrences:
+            consistency_dic[key] = round(value ** 2 / count, 2)
+
+    print_chars_and_words(consistency_dic, 22, 0)
