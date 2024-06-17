@@ -1,9 +1,6 @@
 from statistics import mean, stdev, median_high, mode
 from datetime import datetime
-from utils import get_posts, clean_text, track_days, get_sentences
-
-# Update this whenever you cross the International Date Line in the Eastward direction and post on both sides
-ALLOWED_ERROR_HOURS = 1
+from utils import get_posts, clean_text, get_sentences, days_helper, hours_helper, track_days
 
 
 def print_statistics(stat_list, thing, perbtw="per", item="post"):
@@ -40,52 +37,13 @@ def standardize_date(date_str):
 
 
 def find_days_data(pdf_text):
-    standardized_dates = []
-    date_differences = []
-
-    matched_dates = track_days(pdf_text)
-
-    for date_str in matched_dates:
-        standardized_dates.append(datetime.strptime(date_str, "%m/%d/%y"))
-
-    previous_date = standardized_dates[0]
-
-    for standardized_date in standardized_dates[1:]:
-        days_difference = (standardized_date - previous_date).days
-
-        if days_difference < 0:
-            raise ValueError("Some dates are out of order in the memoir near {}/{}/{}".format(standardized_date.month,
-                                                                                              standardized_date.day,
-                                                                                              standardized_date.year))
-        date_differences.append(days_difference)
-        previous_date = standardized_date
+    date_differences = days_helper(pdf_text)
 
     print_statistics(date_differences, "days", "between", "posts")
 
 
 def find_hours_data(pdf_text):
-    standardized_dates = []
-    hour_differences = []
-    error_hours = 0
-
-    matched_dates = track_days(pdf_text, True)
-
-    for date_str in matched_dates:
-        standardized_dates.append(datetime.strptime(date_str, "%m/%d/%y %I:%M%p"))
-
-    previous_date = standardized_dates[0]
-
-    for standardized_date in standardized_dates[1:]:
-        hours_difference = round((standardized_date - previous_date).total_seconds() / 3600, 2)
-
-        if hours_difference < 0:
-            error_hours += 1
-
-        hour_differences.append(hours_difference)
-        previous_date = standardized_date
-
-    if error_hours > ALLOWED_ERROR_HOURS:
-        raise ValueError("Some hours are out of order in the memoir")
+    hour_differences = hours_helper(pdf_text)
 
     print_statistics(hour_differences, "hours", "between", "posts")
 
@@ -118,6 +76,19 @@ def find_word_length_data(pdf_text):
 
 def find_totals(pdf_text):
     print(f"Total posts: {len(get_posts(pdf_text))}")
+    print(f"Total sentences: {len(get_sentences(pdf_text))}")
     print(f"Total words: {len(clean_text(pdf_text).split())}")
     print(f"Total characters: {len(pdf_text)}")
+    print()
+
+
+def find_time_since_start(pdf_text):
+    dates = track_days(pdf_text)
+
+    days_difference = datetime.today().date() - datetime.strptime(dates[0], "%m/%d/%y").date()
+
+    print(f"Days since first post: {days_difference.days}")
+    print(f"Years since first post: {(days_difference.days / 365):.2f}")
+    print(f"Average words per day: {len(clean_text(pdf_text).split()) // days_difference.days}")
+    print(f"Average words per year: {len(clean_text(pdf_text).split()) // days_difference.days * 365}")
     print()

@@ -1,10 +1,5 @@
-from utils import get_posts, clean_text
+from utils import get_posts, clean_text, make_dictionary
 from collections import Counter
-
-
-def make_dictionary(dictionary_path):
-    with open(dictionary_path) as file:
-        return set([line.strip() for line in file])
 
 
 def print_chars_and_words(dictionary, line_length, min_occurrences):
@@ -58,11 +53,11 @@ def get_word_count_dic(pdf_text):
     return Counter(clean_text(pdf_text).split())
 
 
-def count_words(pdf_text, dic_path, min_occurrences=40, in_dic=True):
+def count_words(pdf_text, min_occurrences=40, in_dic=True):
     counter = get_word_count_dic(pdf_text)
 
     if not in_dic:
-        dictionary = make_dictionary(dic_path)
+        dictionary = make_dictionary()
         for key in list(counter.keys()):
             if key in dictionary:
                 del counter[key]
@@ -135,3 +130,17 @@ def find_consistent_words(pdf_text, min_occurrences=100):
             consistency_dic[key] = round(value ** 2 / count, 2)
 
     print_chars_and_words(consistency_dic, 22, 0)
+
+
+def find_first_letters(pdf_text, alpha_only=True, min_occurrences=0):
+    text = clean_text(pdf_text).split()
+    letter_dic = {}
+
+    for word in text:
+        if word[0] not in letter_dic:
+            if not word[0].isalpha() and alpha_only:
+                continue
+            letter_dic[word[0]] = 0
+        letter_dic[word[0]] += 1
+
+    print_chars_and_words(letter_dic, 16, min_occurrences)

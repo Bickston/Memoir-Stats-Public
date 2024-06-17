@@ -3,9 +3,11 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime
-from utils import track_days, get_posts, clean_text, get_sentences
-from collections import Counter
+from utils import track_days, get_posts, clean_text, get_sentences, days_helper, hours_helper, graph_smooth
+from collections import Counter, defaultdict
 import re
+import emoji
+import pandas as pd
 
 
 def make_hour_histogram(pdf_text):
@@ -124,21 +126,51 @@ def graph_words_scatterplot(pdf_text):
     posts = [len(post.split()) for post in get_posts(pdf_text)]
     del posts[0]
 
-    x_values = np.arange(1, len(posts) + 1)
-    y_values = posts
+    graph_scatterplot(posts, 'Words')
 
-    slope, intercept, r_value, p_value, std_err = linregress(x_values, y_values)
 
-    plt.scatter(x_values, y_values, label='Words', marker='o')
+def graph_scatterplot(y, label):
+    label += "'s"
+    x_values = np.arange(1, len(y) + 1)
+    y_values = y
+
+    slope, intercept, r_value, _, _ = linregress(x_values, y_values)
+
+    plt.scatter(x_values, y_values, label=label, marker='o')
 
     plt.plot(x_values, intercept + slope * x_values, color='red',
              label=f'Line of Best Fit (slope={slope:.2f} | R^2={r_value ** 2:.2f})')
 
     plt.xlabel('Post Number')
-    plt.ylabel('Words')
-    plt.title('Words per Post')
+    plt.ylabel(label)
+    plt.title(label + ' per Post')
     plt.legend()
     plt.show()
+
+
+def char_graphing(pdf_text, target_char):
+    posts = get_posts(pdf_text)
+    del posts[0]
+
+    counts = []
+    for post in posts:
+        total = 0
+        for char in post:
+            if target_char:
+                total += char == target_char
+            else:
+                total += emoji.is_emoji(char)
+        counts.append(total)
+
+    graph_scatterplot(counts, 'Emoji' * (not target_char) + target_char)
+
+
+def graph_emojis_scatterplot(pdf_text):
+    char_graphing(pdf_text, "")
+
+
+def graph_char_scatterplot(pdf_text, target_char='e'):
+    char_graphing(pdf_text, target_char)
 
 
 def graph_frequencies(length_list, include_labels, kind):
@@ -188,22 +220,83 @@ def graph_post_length_frequency(pdf_text, max_length=10000):
     plt.show()
 
 
-def graph_certain_word_frequency(pdf_text, word):
+def graph_word_frequency_scatterplot(pdf_text, word="the", normalized=False):
     posts = get_posts(pdf_text)
     del posts[0]
     word_counts = [0] * len(posts)
 
     for i, post in enumerate(posts):
         word_counts[i] += len(re.findall(r'[^a-zA-Z]{}[^a-zA-Z]'.format(word), post, re.IGNORECASE))
+        if normalized:
+            word_counts[i] /= len(post.split())
 
-    print(word_counts)
+    graph_scatterplot(word_counts, word)
 
-    x_values = list(range(len(word_counts)))
 
-    plt.scatter(x_values, word_counts, color='skyblue')
+def graph_word_count_by_time(pdf_text, month=True):
+    splits = re.split(r'(\d{1,2}/\d{1,2}/\d{2,4})', pdf_text)
+    dates_posts = [(splits[i], splits[i + 1].strip()) for i in range(1, len(splits) - 1, 2)]
 
-    plt.xlabel('Post')
-    plt.ylabel('Word count')
-    plt.title('Scatter Plot of frequency of "{}"'.format(word))
+    word_counts = defaultdict(int)
+    for date, post in dates_posts:
+        date = datetime.strptime(date, '%m/%d/%y')
+        word_counts[date.strftime('%Y' + month * '-%m')] += len(post.split())
 
+    times = sorted(word_counts.keys())
+    counts = [word_counts[month] for month in times]
+
+    plt.figure(figsize=(10, 6))
+    plt.bar(times, counts, color='skyblue')
+    plt.xlabel('Month' * month + 'Year' * (not month))
+    plt.ylabel('Word Count')
+    plt.title('Word Count by ' + 'Month' * month + 'Year' * (not month))
+    plt.xticks(rotation=45)
+    plt.tight_layout()
     plt.show()
+
+
+def graph_stacked_month(pdf_text):
+    splits = re.split(r'(\d{1,2}/\d{1,2}/\d{2,4})', pdf_text)
+    dates_posts = [(splits[i], splits[i + 1].strip()) for i in range(1, len(splits) - 1, 2)]
+
+    word_counts = defaultdict(lambda: defaultdict(int))
+    for date, post in dates_posts:
+        date = datetime.strptime(date, '%m/%d/%y')
+        word_counts[date.strftime('%m')][date.strftime('%Y')] += len(post.split())
+
+    months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+    years = sorted({year for month in word_counts for year in word_counts[month]})
+
+    data = {year: [word_counts[month].get(year, 0) for month in months] for year in years}
+
+    plt.figure(figsize=(12, 8))
+    bottom = [0] * 12
+
+    for year in years:
+        plt.bar(months, data[year], bottom=bottom, label=year)
+        bottom = [i + j for i, j in zip(bottom, data[year])]
+
+    plt.xlabel('Month')
+    plt.ylabel('Word Count')
+    plt.title('Word Count by Month (Stacked by Year)')
+    plt.xticks(months, ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+    plt.legend(title='Year')
+    plt.tight_layout()
+    plt.show()
+
+
+def graph_rolling_data(pdf_text, mode="hours", window=5):
+    if mode not in ["days", "hours", "words"]:
+        raise ValueError("Mode not supported")
+
+    if mode == "days":
+        data = days_helper(pdf_text)
+    elif mode == "hours":
+        data = hours_helper(pdf_text)
+    elif mode == "words":
+        data = [len(post.split()) for post in get_posts(pdf_text)[1:]]
+
+    series = pd.Series(data)
+    rolling_averages = series.rolling(window=window).mean().dropna().tolist()
+
+    graph_smooth(rolling_averages, f'{window}-Entry Rolling Average')
